@@ -1,0 +1,22 @@
+[
+  {
+    "type": "Binary",
+    "left": {
+      "type": "Binary",
+      "left": {
+        "type": "Literal",
+        "value": 15
+      },
+      "operator": "+",
+      "right": {
+        "type": "Literal",
+        "value": 15
+      }
+    },
+    "operator": "/",
+    "right": {
+      "type": "Literal",
+      "value": 3
+    }
+  }
+]

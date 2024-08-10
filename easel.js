@@ -1,3 +1,5 @@
+import { Lexer } from './lexer.js'
+import { Parser } from './parser.js'
 import fs from 'fs'
 
 const readFile = location  =>
@@ -23,6 +25,24 @@ const writeFile = (location, data) =>
     const location = argv[0]
     if (location) {
         const program = await readFile(location)
+        const lexer = new Lexer(program)
+        try {
+            lexer.scanTokens()
+        } catch (err) {
+            console.log(err)
+            process.exit(1)
+        } finally {
+            if (debug) await writeFile('tokens.json', JSON.stringify(lexer.tokens, null, 2))
+        }
+
+        const parser = new Parser(lexer.tokens)
+        try {
+            parser.parse()
+        } catch (err) {
+            console.log(err)
+        } finally {
+            if (debug) await writeFile('ast.json', JSON.stringify(parser.ast, null, 2))
+        }
         console.log(program)
     } else {
         // Interactive REPL
