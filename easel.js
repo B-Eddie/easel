@@ -1,6 +1,7 @@
+import fs from "fs";
+import readline from "node:readline";
 import { Lexer } from "./lexer.js";
 import { Parser } from "./parser.js";
-import fs from "fs";
 import { Interpreter } from "./interpreter.js";
 import stdlib, { EaselError } from "./stdlib.js";
 
@@ -11,6 +12,7 @@ const readFile = (location) =>
       resolve(data.toString());
     })
   );
+
 const writeFile = (location, data) =>
   new Promise((resolve, reject) =>
     fs.writeFile(location, data, (err) => {
@@ -25,7 +27,6 @@ const writeFile = (location, data) =>
   argv = argv.filter((arg) => arg !== "--dbg");
 
   const location = argv[0];
-
   if (location) {
     const program = await readFile(location);
 
@@ -33,7 +34,7 @@ const writeFile = (location, data) =>
     try {
       lexer.scanTokens();
     } catch (err) {
-      console.log(err);
+      if (err instanceof EaselError) console.log(err);
       process.exit(1);
     } finally {
       if (debug)
@@ -44,7 +45,7 @@ const writeFile = (location, data) =>
     try {
       parser.parse();
     } catch (err) {
-      console.log(err);
+      if (err instanceof EaselError) console.log(err);
     } finally {
       if (debug)
         await writeFile("ast.json", JSON.stringify(parser.ast, null, 2));
@@ -54,7 +55,59 @@ const writeFile = (location, data) =>
     try {
       interpreter.run(parser.ast, stdlib);
     } catch (err) {
-      console.log(err);
+      if (err instanceof EaselError) console.log(err.toString());
     }
+  } else {
+    // Interactive REPL
+    const interpreter = new Interpreter();
+    let scope = {
+      ...stdlib,
+      exit: () => process.exit(0),
+    };
+
+    const input = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+
+    // Remember to close stream before exiting
+    process.on("SIGINT", () => {
+      input.close();
+    });
+
+    const repl = (line) => {
+      let hadError = false;
+
+      const lexer = new Lexer(line);
+      try {
+        lexer.scanTokens();
+      } catch (err) {
+        if (err instanceof EaselError) {
+          hadError = true;
+        } else throw err;
+      }
+
+      if (!hadError) {
+        const parser = new Parser(lexer.tokens);
+        try {
+          parser.parse();
+        } catch (err) {
+          if (err instanceof EaselError) {
+            // Check if start of block statement
+          } else throw err;
+        }
+
+        try {
+          scope = interpreter.run(parser.ast, scope);
+        } catch (err) {
+          if (err instanceof EaselError) console.log(err.toString());
+          else throw err;
+        }
+      }
+
+      input.question("> ", repl);
+    };
+
+    input.question("> ", repl);
   }
 })();
