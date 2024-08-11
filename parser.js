@@ -93,7 +93,7 @@ export class Parser {
   //   }
 
   simple() {
-    const token = this.eat(this.peekType());
+    let token = this.eat(this.peekType());
     switch (token.type) {
       case TOKENS.Identifier: {
         return new Ast.Var(token.value);
@@ -157,8 +157,37 @@ export class Parser {
     return identifiers;
   }
 
+  unary() {
+    if (this.peekType() === TOKENS.Not) {
+      const op = this.eat(this.peekType()).value
+      return new Ast.Unary(op, this.unary())
+    }
+    return this.call()
+  }
+
+  call() {
+    let expr = this.simple()
+    while (true) {
+      if (this.peekType() === TOKENS.LeftParen) {
+        this.eat(TOKENS.LeftParen)
+        let args = []
+        if (this.peekType() !== TOKENS.RightParen) args = this.exprList()
+          this.eat(TOKENS.RightParen)
+        expr = new Ast.Call(expr, args)
+      } else if (this.peekType() === TOKENS.LeftBracket) {
+        this.eat(TOKENS.LeftBracket)
+        const property = this.expr()
+        this.eat(TOKENS.RightBracket)
+        expr =  new Ast.Get(expr, property, true)
+      } else break
+    }
+    return expr
+  }
+
   expr() {
-    let left = this.simple();
+    const left = this.unary()
+    // const left = this.call()
+    // let left = this.simple();
     if (isOp(this.peekType())) {
       const op = this.eat(this.peekType()).value;
       const right = this.expr();
@@ -175,9 +204,9 @@ export class Parser {
 
   stmt() {
     const returnStmt = () => {
-        this.eatKeyword('finished')
-        return new Ast.Return(this.expr())
-    }
+      this.eatKeyword("finished");
+      return new Ast.Return(this.expr());
+    };
 
     const funcStmt = () => {
       this.eatKeyword("sketch");
@@ -198,13 +227,110 @@ export class Parser {
         return new Ast.Func(name, params, body);
       }
     };
+
+    const forStmt = () => {
+      this.eatKeyword("loop");
+      const id = this.eat(TOKENS.Identifier).value;
+      this.eatKeyword("through");
+
+      this.eat(TOKENS.LeftParen);
+      const range = this.exprList();
+      if (range.length !== 2)
+        this.error(
+          range[range.length - 1],
+          "Expected (start, end) range but received more arguments than expected"
+        );
+      this.eat(TOKENS.RightParen);
+
+      this.eat(TOKENS.LeftBrace);
+      let body = [];
+      while (this.peekType() !== TOKENS.RightBrace) body.push(this.stmt());
+      this.eat(TOKENS.RightBrace);
+
+      return new Ast.For(id, range, body);
+    };
+
+    const whileStmt = () => {
+      this.eatKeyword("while");
+
+      this.eat(TOKENS.LeftParen);
+      const condition = this.expr();
+      this.eat(TOKENS.RightParen);
+
+      this.eat(TOKENS.LeftBrace);
+      let body = [];
+      while (this.peekType() !== TOKENS.RightBrace) body.push(this.stmt());
+      this.eat(TOKENS.RightBrace);
+
+      return new Ast.While(condition, body);
+    };
+
+    const conditionalStmt = (keyword) => {
+      this.eatKeyword(keyword);
+
+      let condition = new Ast.Literal(true);
+      if (keyword !== "else") {
+        this.eat(TOKENS.LeftParen);
+        condition = this.expr();
+        this.eat(TOKENS.RightParen);
+      }
+
+      this.eat(TOKENS.LeftBrace);
+      let body = [];
+      while (this.peekType() !== TOKENS.RightBrace) body.push(this.stmt());
+      otherwise.push(conditionalStmt(this.peek().value));
+
+      return new Ast.Conditional(condition, body, otherwise);
+    };
+
+    const assignStmt = () => {
+      this.eatKeyword("prepare");
+      const name = this.eat(TOKENS.Identifier).value;
+      if (this.peekType() === TOKENS.Period) {
+        this.eat(TOKENS.Period);
+        const property = this.eat(TOKENS.Identifier).value;
+        this.eatKeyword("as");
+        const value = this.expr();
+        return new Ast.Set(name, property, value);
+      }
+      this.eatKeyword("as");
+      const value = this.expr();
+      return new Ast.Set(name, value);
+    };
+
+    const structSet = () => {
+      this.eatKeyword('brush')
+      const name = this.eat(TOKENS.Identifier).value
+      this.eatKeyword('has')
+      this.eat(TOKENS.LeftBrace)
+      const members = this.identifierList()
+      this.eat(TOKENS.RightBrace)
+      return new Ast.Struct(name, members)
+    }
+
     const next = this.peek();
     switch (next.type) {
       case TOKENS.Keyword: {
         switch (next.value) {
-            case 'finished':
-                return returnStmt()
-            case "sketch": {
+          case "brush": {
+            return structStmt();
+          }
+          case "finished": {
+            return returnStmt();
+          }
+          case "prepare": {
+            return assignStmt();
+          }
+          case "loop": {
+            return forStmt();
+          }
+          case "while": {
+            return whileStmt();
+          }
+          case "if": {
+            return conditionalStmt("if");
+          }
+          case "sketch": {
             return funcStmt();
           }
         }
